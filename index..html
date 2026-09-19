@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Живая рисовалка — запись процесса рисования</title>
+<style>
+  :root{
+    --bg:#f4f1ea;
+    --panel:#ffffff;
+    --text:#1d1d1f;
+    --muted:#71717a;
+    --line:#e7e5e4;
+    --accent:#111827;
+    --danger:#dc2626;
+    --ok:#059669;
+    --shadow:0 20px 50px rgba(0,0,0,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+  button,input,select{font:inherit}
+  .app{display:grid;grid-template-columns:290px 1fr;height:100vh;width:100vw}
+  .sidebar{
+    background:rgba(255,255,255,.96);
+    border-right:1px solid var(--line);
+    padding:18px;
+    display:flex;
+    flex-direction:column;
+    gap:15px;
+    overflow:auto;
+    z-index:5;
+    box-shadow:10px 0 35px rgba(0,0,0,.04)
+  }
+  .brand{font-weight:800;font-size:20px;letter-spacing:-.02em}
+  .sub{font-size:12px;color:var(--muted);line-height:1.4}
+  .section{border-top:1px solid var(--line);padding-top:14px}
+  .section:first-of-type{border-top:0;padding-top:0}
+  .label{font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;color:#52525b}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .tool{
+    flex:1;min-width:105px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px 12px;cursor:pointer;font-weight:700;
+    transition:.15s ease;
+  }
+  .tool:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.07)}
+  .tool.active{background:#111827;color:#fff;border-color:#111827}
+  .tool.danger{color:var(--danger)}
+  .tool.primary{background:#111827;color:#fff;border-color:#111827}
+  .tool.green{background:#065f46;color:white;border-color:#065f46}
+  .tool:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+  .palette{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .swatch{
+    aspect-ratio:1;border-radius:10px;border:2px solid rgba(0,0,0,.08);cursor:pointer;position:relative;
+  }
+  .swatch.active::after{content:"";position:absolute;inset:4px;border:2px solid white;border-radius:6px;box-shadow:0 0 0 1px rgba(0,0,0,.45)}
+  .colorline{display:grid;grid-template-columns:1fr 52px;gap:8px}
+  .colorline input[type=color]{width:52px;height:40px;border:0;padding:0;background:none;cursor:pointer}
+  input[type=range]{width:100%}
+  .value{font-size:12px;color:var(--muted);min-width:48px;text-align:right}
+  .status{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:9px 11px;border-radius:10px;background:#fafafa;border:1px solid var(--line)
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:#a1a1aa}
+  .dot.rec{background:#ef4444;box-shadow:0 0 0 5px rgba(239,68,68,.12);animation:pulse 1.2s infinite}
+  .dot.play{background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.12)}
+  @keyframes pulse{50%{opacity:.45}}
+  .progressWrap{display:none}
+  .progressWrap.show{display:block}
+  .progress{
+    height:10px;background:#ececec;border-radius:999px;overflow:hidden;border:1px solid #e5e7eb
+  }
+  .progress>div{height:100%;width:0%;background:#111827;transition:width .08s linear}
+  .progressText{font-size:11px;color:var(--muted);margin-top:6px}
+  .canvasWrap{position:relative;background:#d6d3d1;overflow:hidden;touch-action:none}
+  canvas{display:block;background:#fff;cursor:crosshair;position:absolute;inset:0;width:100%;height:100%}
+  .topbar{
+    position:absolute;top:14px;right:16px;z-index:3;display:flex;gap:8px;align-items:center
+  }
+  .badge{background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:12px;box-shadow:var(--shadow)}
+  .fullscreen{
+    border:1px solid var(--line);background:rgba(255,255,255,.94);border-radius:999px;padding:8px 12px;cursor:pointer;box-shadow:var(--shadow);font-size:12px;font-weight:700
+  }
+  .mobileToggle{display:none}
+  @media (max-width:760px){
+    .app{grid-template-columns:1fr}
+    .sidebar{
+      position:absolute;left:0;top:0;bottom:0;width:min(88vw,330px);transform:translateX(-102%);transition:.2s ease;box-shadow:var(--shadow)
+    }
+    .sidebar.open{transform:translateX(0)}
+    .mobileToggle{
+      display:block;position:absolute;left:12px;top:12px;z-index:10;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 12px;font-weight:700;box-shadow:var(--shadow)
+    }
+    .topbar{top:12px;right:12px}
+    .badge{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <button class="mobileToggle" id="mobileToggle">☰ Инструменты</button>
+
+  <aside class="sidebar" id="sidebar">
+    <div>
+      <div class="brand">Живая рисовалка</div>
+      <div class="sub">Рисуйте — сервис запоминает каждый штрих и умеет воспроизвести процесс от начала до конца.</div>
+    </div>
+
+    <div class="section">
+      <div class="label">Инструмент</div>
+      <div class="row">
+        <button class="tool active" id="brushBtn">✏️ Карандаш</button>
+        <button class="tool" id="eraserBtn">🧽 Ластик</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">Готовая палитра</div>
+      <div class="palette" id="palette"></div>
+      <div class="colorline" style="margin-top:10px">
+        <button class="tool" id="customColorLabel">Любой цвет</button>
+        <input id="colorPicker" type="color" value="#111111" title="Выбрать любой цвет">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">Размер карандаша</div>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="sizeRange" type="range" min="1" max="60" value="6">
+        <div class="value" id="sizeValue">6 px</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">Скорость воспроизведения</div>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="speedRange" type="range" min="0.25" max="4" step="0.25" value="1">
+        <div class="value" id="speedValue">1×</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">История</div>
+      <div class="row">
+        <button class="tool" id="undoBtn">↶ Отмена</button>
+        <button class="tool" id="redoBtn">↷ Повтор</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="tool danger" id="clearBtn">Очистить холст</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">Воспроизведение</div>
+      <div class="row">
+        <button class="tool primary" id="playBtn">▶ Смотреть</button>
+        <button class="tool" id="pauseBtn">⏸ Пауза</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="tool" id="stopBtn">⏹ В начало</button>
+      </div>
+      <div class="status" style="margin-top:9px">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Готово к рисованию</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">Сохранение</div>
+      <div class="row">
+        <button class="tool" id="pngBtn">🖼 PNG</button>
+        <button class="tool green" id="videoBtn">🎬 Видео</button>
+      </div>
+      <div class="progressWrap" id="progressWrap" style="margin-top:10px">
+        <div class="progress"><div id="progressBar"></div></div>
+        <div class="progressText" id="progressText">Подготовка видео…</div>
+      </div>
+      <div class="sub" style="margin-top:8px">
+        Если браузер поддерживает MP4 — сохранится MP4. Иначе автоматически создаётся WebM, который можно открыть почти в любом современном браузере.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sub">
+        Автосохранение включено: история рисунка хранится локально в этом браузере и восстанавливается после перезагрузки страницы.
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvasWrap" id="canvasWrap">
+    <canvas id="canvas"></canvas>
+    <div class="topbar">
+      <div class="badge" id="strokeBadge">Штрихов: 0</div>
+      <button class="fullscreen" id="fullscreenBtn">⛶ Во весь экран</button>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('canvas');
+  const wrap = document.getElementById('canvasWrap');
+  const ctx = canvas.getContext('2d', { alpha:false });
+
+  const brushBtn = document.getElementById('brushBtn');
+  const eraserBtn = document.getElementById('eraserBtn');
+  const paletteEl = document.getElementById('palette');
+  const colorPicker = document.getElementById('colorPicker');
+  const sizeRange = document.getElementById('sizeRange');
+  const sizeValue = document.getElementById('sizeValue');
+  const speedRange = document.getElementById('speedRange');
+  const speedValue = document.getElementById('speedValue');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const playBtn = document.getElementById('playBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const pngBtn = document.getElementById('pngBtn');
+  const videoBtn = document.getElementById('videoBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('statusDot');
+  const strokeBadge = document.getElementById('strokeBadge');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const sidebar = document.getElementById('sidebar');
+  const mobileToggle = document.getElementById('mobileToggle');
+
+  const colors = ['#111111','#ffffff','#ef4444','#f97316','#facc15','#22c55e','#14b8a6','#0ea5e9','#2563eb','#7c3aed','#c026d3','#ec4899','#8b5e3c','#6b7280','#94a3b8','#f5d0a9','#0f766e','#4c1d95'];
+
+  let tool = 'brush';
+  let color = '#111111';
+  let size = 6;
+  let speed = 1;
+  let drawing = false;
+  let currentStroke = null;
+  let strokes = [];
+  let redoStack = [];
+  let playAbort = false;
+  let playPaused = false;
+  let pauseResolvers = [];
+
+  function setStatus(text, mode='idle'){
+    statusText.textContent = text;
+    statusDot.className = 'dot' + (mode==='rec'?' rec':mode==='play'?' play':'');
+  }
+
+  function makePalette(){
+    colors.forEach(c=>{
+      const b = document.createElement('button');
+      b.className='swatch';
+      b.style.background=c;
+      b.title=c;
+      b.dataset.color=c;
+      if(c===color) b.classList.add('active');
+      b.onclick=()=>{
+        color=c; colorPicker.value=c;
+        [...paletteEl.children].forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+        if(tool==='eraser') setTool('brush');
+      };
+      paletteEl.appendChild(b);
+    });
+  }
+  makePalette();
+
+  function setTool(next){
+    tool=next;
+    brushBtn.classList.toggle('active', tool==='brush');
+    eraserBtn.classList.toggle('active', tool==='eraser');
+    canvas.style.cursor = tool==='eraser' ? 'cell' : 'crosshair';
+  }
+  brushBtn.onclick=()=>setTool('brush');
+  eraserBtn.onclick=()=>setTool('eraser');
+
+  colorPicker.oninput=()=>{
+    color=colorPicker.value;
+    [...paletteEl.children].forEach(x=>x.classList.toggle('active', x.dataset.color===color));
+    if(tool==='eraser') setTool('brush');
+  };
+
+  sizeRange.oninput=()=>{ size=+sizeRange.value; sizeValue.textContent=size+' px'; };
+  speedRange.oninput=()=>{ speed=+speedRange.value; speedValue.textContent=speed+'×'; };
+
+  function resizeCanvas(){
+    const rect=wrap.getBoundingClientRect();
+    const dpr=Math.max(1, window.devicePixelRatio||1);
+    canvas.width=Math.floor(rect.width*dpr);
+    canvas.height=Math.floor(rect.height*dpr);
+    canvas.style.width=rect.width+'px';
+    canvas.style.height=rect.height+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    redrawAll();
+  }
+
+  function clearSurface(){
+    const rect=wrap.getBoundingClientRect();
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+  }
+
+  function drawStroke(stroke, upto=stroke.points.length){
+    if(!stroke || stroke.points.length===0) return;
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.lineWidth=stroke.size;
+    ctx.strokeStyle = stroke.tool==='eraser' ? '#ffffff' : stroke.color;
+    ctx.globalCompositeOperation='source-over';
+
+    if(stroke.points.length===1 || upto===1){
+      const p=stroke.points[0];
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,stroke.size/2,0,Math.PI*2);
+      ctx.fillStyle=ctx.strokeStyle;
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x,stroke.points[0].y);
+    for(let i=1;i<Math.min(upto,stroke.points.length);i++){
+      const p=stroke.points[i];
+      ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function redrawAll(list=strokes){
+    clearSurface();
+    list.forEach(s=>drawStroke(s));
+    updateBadge();
+  }
+
+  function updateBadge(){ strokeBadge.textContent=`Штрихов: ${strokes.length}`; }
+
+  function pointFromEvent(e){
+    const r=canvas.getBoundingClientRect();
+    return {x:e.clientX-r.left,y:e.clientY-r.top,t:performance.now()};
+  }
+
+  canvas.addEventListener('pointerdown',e=>{
+    if(playBtn.disabled) return;
+    drawing=true;
+    canvas.setPointerCapture(e.pointerId);
+    const p=pointFromEvent(e);
+    currentStroke={tool,color,size,points:[p],startedAt:Date.now()};
+    setStatus('Идёт запись рисования','rec');
+    drawStroke(currentStroke,1);
+  });
+
+  canvas.addEventListener('pointermove',e=>{
+    if(!drawing || !currentStroke) return;
+    const p=pointFromEvent(e);
+    currentStroke.points.push(p);
+    drawStroke(currentStroke);
+  });
+
+  const endStroke = ()=>{
+    if(!drawing || !currentStroke) return;
+    drawing=false;
+    strokes.push(currentStroke);
+    currentStroke=null;
+    redoStack=[];
+    saveLocal();
+    updateBadge();
+    setStatus('Готово к рисованию');
+  };
+  canvas.addEventListener('pointerup',endStroke);
+  canvas.addEventListener('pointercancel',endStroke);
+  canvas.addEventListener('pointerleave',e=>{ if(drawing && e.buttons===0) endStroke(); });
+
+  undoBtn.onclick=()=>{
+    if(!strokes.length)return;
+    redoStack.push(strokes.pop());
+    redrawAll(); saveLocal();
+  };
+  redoBtn.onclick=()=>{
+    if(!redoStack.length)return;
+    strokes.push(redoStack.pop());
+    redrawAll(); saveLocal();
+  };
+  clearBtn.onclick=()=>{
+    if(!strokes.length) return;
+    if(confirm('Очистить весь рисунок?')){ redoStack=[]; strokes=[]; redrawAll(); saveLocal(); }
+  };
+
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  async function waitIfPaused(){
+    while(playPaused && !playAbort){
+      await new Promise(res=>pauseResolvers.push(res));
+    }
+  }
+
+  async function playback({forExport=false, onProgress=null}={}){
+    playAbort=false; playPaused=false;
+    setUIPlaying(true);
+    setStatus(forExport?'Подготовка видео…':'Воспроизведение','play');
+    clearSurface();
+
+    const totalPts = strokes.reduce((a,s)=>a+Math.max(1,s.points.length),0) || 1;
+    let done=0;
+
+    for(const s of strokes){
+      if(playAbort) break;
+      if(s.points.length===1){
+        await waitIfPaused();
+        drawStroke(s,1);
+        done++;
+        onProgress?.(done/totalPts);
+        await sleep(18/Math.max(.25,speed));
+        continue;
+      }
+
+      ctx.save();
+      ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=s.size;
+      ctx.strokeStyle=s.tool==='eraser'?'#ffffff':s.color;
+      ctx.globalCompositeOperation='source-over';
+      ctx.beginPath();
+      ctx.moveTo(s.points[0].x,s.points[0].y);
+      for(let i=1;i<s.points.length;i++){
+        await waitIfPaused();
+        if(playAbort) break;
+        const prev=s.points[i-1], p=s.points[i];
+        ctx.lineTo(p.x,p.y);
+        ctx.stroke();
+
+        done++;
+        onProgress?.(done/totalPts);
+
+        const rawDelay=Math.max(2, Math.min(45, (p.t-prev.t)||10));
+        await sleep(rawDelay/Math.max(.25,speed));
+      }
+      ctx.restore();
+      if(playAbort) break;
+    }
+
+    if(!forExport){
+      setUIPlaying(false);
+      if(playAbort){ redrawAll(); setStatus('Воспроизведение остановлено'); }
+      else setStatus('Воспроизведение завершено');
+    }
+  }
+
+  function setUIPlaying(on){
+    playBtn.disabled=on; videoBtn.disabled=on; pngBtn.disabled=on; clearBtn.disabled=on;
+  }
+
+  playBtn.onclick=()=>playback();
+  pauseBtn.onclick=()=>{
+    if(!playBtn.disabled)return;
+    playPaused=!playPaused;
+    pauseBtn.textContent=playPaused?'▶ Продолжить':'⏸ Пауза';
+    setStatus(playPaused?'Пауза':'Воспроизведение','play');
+    if(!playPaused){ const rs=[...pauseResolvers]; pauseResolvers=[]; rs.forEach(r=>r()); }
+  };
+  stopBtn.onclick=()=>{
+    if(!playBtn.disabled)return;
+    playAbort=true; playPaused=false;
+    const rs=[...pauseResolvers]; pauseResolvers=[]; rs.forEach(r=>r());
+    pauseBtn.textContent='⏸ Пауза';
+    setUIPlaying(false); redrawAll(); setStatus('Возврат к рисунку');
+  };
+
+  pngBtn.onclick=()=>{
+    redrawAll();
+    canvas.toBlob(blob=>{
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='risunok.png';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    },'image/png');
+  };
+
+  function pickMime(){
+    const types=[
+      'video/mp4;codecs=h264',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    return types.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+  }
+
+  async function exportVideo(){
+    if(!window.MediaRecorder){
+      alert('Этот браузер не поддерживает запись видео с Canvas. Попробуйте Chrome, Edge или Firefox.');
+      return;
+    }
+    if(!strokes.length){
+      alert('Сначала нарисуйте что-нибудь.');
+      return;
+    }
+
+    progressWrap.classList.add('show');
+    progressBar.style.width='0%';
+    progressText.textContent='Подготовка видео: 0%';
+
+    const mime=pickMime();
+    const stream=canvas.captureStream(60);
+    const chunks=[];
+    let recorder;
+    try{
+      recorder = new MediaRecorder(stream, mime ? {mimeType:mime, videoBitsPerSecond:8_000_000} : {videoBitsPerSecond:8_000_000});
+    }catch(e){
+      alert('Не удалось запустить видеозапись в этом браузере.');
+      progressWrap.classList.remove('show');
+      return;
+    }
+    recorder.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+
+    const donePromise=new Promise(resolve=>recorder.onstop=resolve);
+    recorder.start(250);
+
+    await playback({
+      forExport:true,
+      onProgress:(p)=>{
+        const pct=Math.min(98,Math.round(p*98));
+        progressBar.style.width=pct+'%';
+        progressText.textContent='Подготовка видео: '+pct+'%';
+      }
+    });
+
+    await sleep(250);
+    recorder.stop();
+    await donePromise;
+
+    const realType = recorder.mimeType || mime || 'video/webm';
+    const blob=new Blob(chunks,{type:realType});
+    progressBar.style.width='100%';
+    progressText.textContent='Видео готово. Начинается скачивание…';
+
+    const ext=realType.includes('mp4')?'mp4':'webm';
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='process-risovaniya.'+ext;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(()=>{
+      URL.revokeObjectURL(a.href);
+      progressText.textContent='Видео скачано / передано браузеру для сохранения.';
+      setTimeout(()=>progressWrap.classList.remove('show'),2500);
+    },1200);
+
+    redrawAll();
+    setUIPlaying(false);
+    setStatus('Видео готово');
+  }
+  videoBtn.onclick=exportVideo;
+
+  fullscreenBtn.onclick=async()=>{
+    try{
+      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(e){}
+  };
+
+  mobileToggle.onclick=()=>sidebar.classList.toggle('open');
+  wrap.addEventListener('pointerdown',()=>{
+    if(innerWidth<=760) sidebar.classList.remove('open');
+  });
+
+  function saveLocal(){
+    try{
+      localStorage.setItem('liveDrawStrokes', JSON.stringify(strokes));
+    }catch(e){}
+  }
+  function loadLocal(){
+    try{
+      const raw=localStorage.getItem('liveDrawStrokes');
+      if(raw){
+        const parsed=JSON.parse(raw);
+        if(Array.isArray(parsed)) strokes=parsed;
+      }
+    }catch(e){}
+  }
+
+  let resizeTimer=null;
+  window.addEventListener('resize',()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer=setTimeout(resizeCanvas,80);
+  });
+
+  loadLocal();
+  resizeCanvas();
+  setStatus('Готово к рисованию');
+})();
+</script>
+</body>
+</html>
